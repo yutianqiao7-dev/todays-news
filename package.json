@@ -1,0 +1,12 @@
+{
+  "name": "todays-news",
+  "version": "1.0.0",
+  "private": true,
+  "description": "今日のニュースを簡潔に表示するWebアプリ",
+  "scripts": {
+    "start": "node server.js",
+    "notify": "node notify.js",
+    "notify:on": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/schedule.ps1",
+    "notify:off": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/schedule.ps1 -Remove"
+  }
+}

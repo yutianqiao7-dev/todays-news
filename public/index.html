@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>今日のニュース</title>
+<meta name="theme-color" content="#faf8f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161514" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ニュース">
+<style>
+  :root {
+    --bg: #faf8f4;
+    --surface: #ffffff;
+    --text: #1d1b19;
+    --muted: #6d675f;
+    --line: #e7e2d9;
+    --accent: #c8321e;
+    --chip: #efebe4;
+    --chip-on-bg: #1d1b19;
+    --chip-on-text: #faf8f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161514;
+      --surface: #201f1d;
+      --text: #efece7;
+      --muted: #a09a91;
+      --line: #34312d;
+      --accent: #ff6b55;
+      --chip: #2a2826;
+      --chip-on-bg: #efece7;
+      --chip-on-text: #161514;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 0 16px calc(40px + env(safe-area-inset-bottom)); }
+
+  header { padding: calc(20px + env(safe-area-inset-top)) 0 12px; display: flex; align-items: flex-end; gap: 12px; }
+  header .date { font-size: 13px; color: var(--muted); letter-spacing: .04em; }
+  header h1 { margin: 2px 0 0; font-size: 26px; line-height: 1.2; letter-spacing: .02em; }
+  header .grow { flex: 1; }
+  #refresh {
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 13px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  #refresh svg { width: 14px; height: 14px; }
+  #refresh.spin svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .brief {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 16px 6px; margin: 8px 0 20px;
+  }
+  .brief h2 { margin: 0 0 8px; font-size: 13px; color: var(--accent); letter-spacing: .08em; }
+  .brief ol { margin: 0; padding: 0; list-style: none; counter-reset: n; }
+  .brief li { counter-increment: n; display: grid; grid-template-columns: 26px 1fr; padding: 10px 0; border-top: 1px solid var(--line); }
+  .brief li:first-child { border-top: 0; }
+  .brief li::before { content: counter(n); font-weight: 700; font-size: 18px; color: var(--accent); line-height: 1.35; }
+  .brief a { color: inherit; text-decoration: none; font-weight: 700; font-size: 16px; line-height: 1.45; }
+  .brief p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+
+  nav {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px; margin: 0 -16px;
+    scrollbar-width: none; border-bottom: 1px solid var(--line);
+  }
+  nav::-webkit-scrollbar { display: none; }
+  nav button {
+    flex: none; border: 0; background: var(--chip); color: var(--text);
+    border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 14px; cursor: pointer;
+  }
+  nav button[aria-selected="true"] { background: var(--chip-on-bg); color: var(--chip-on-text); font-weight: 700; }
+
+  .group { font-size: 12px; color: var(--muted); letter-spacing: .08em; margin: 18px 0 2px; }
+  ul.list { list-style: none; margin: 0; padding: 0; }
+  ul.list li { border-bottom: 1px solid var(--line); }
+  .item { display: block; width: 100%; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 14px 0; cursor: pointer; }
+  .item .time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .src { margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .src.nhk { background: var(--chip); color: var(--text); }
+  .src.yahoo { background: var(--chip); color: var(--accent); }
+  .item .title { display: block; font-size: 16px; font-weight: 700; line-height: 1.45; margin-top: 2px; }
+  .item .sum { display: block; font-size: 14px; color: var(--muted); margin-top: 4px; }
+  .more { display: none; padding: 0 0 14px; font-size: 14px; }
+  .more p { margin: 0 0 8px; }
+  .more a { color: var(--accent); font-size: 13px; }
+  li.open .more { display: block; }
+  li.open .sum { display: none; }
+  .old .title { font-weight: 500; }
+
+  .msg { color: var(--muted); padding: 24px 0; text-align: center; font-size: 14px; }
+  .skeleton { height: 64px; border-radius: 8px; background: var(--chip); margin: 12px 0; opacity: .6; }
+  footer { margin-top: 28px; font-size: 12px; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="grow">
+      <div class="date" id="date"></div>
+      <h1>今日のニュース</h1>
+    </div>
+    <button id="refresh" type="button" aria-label="更新">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+      更新
+    </button>
+  </header>
+
+  <section class="brief" id="brief" hidden>
+    <h2>まずはこの3本</h2>
+    <ol id="briefList"></ol>
+  </section>
+
+  <nav id="tabs" role="tablist"></nav>
+  <div id="content"></div>
+
+  <footer id="footer">出典: NHK ニュース / Yahoo!ニュース</footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let current = 'top';
+try { current = localStorage.getItem('cat') || 'top'; } catch {}
+
+const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+const now = new Date();
+$('date').textContent = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日（${WEEK[now.getDay()]}）`;
+
+// 説明文の最初の一文だけにして「簡潔に」
+function firstSentence(s) {
+  const t = (s || '').replace(/…$/, '');
+  const i = t.indexOf('。');
+  return i > 0 ? t.slice(0, i + 1) : s;
+}
+
+function timeLabel(iso) {
+  const d = new Date(iso);
+  const mins = Math.round((Date.now() - d) / 60000);
+  if (mins < 1) return 'たった今';
+  if (mins < 60) return `${mins}分前`;
+  if (mins < 60 * 12) return `${Math.floor(mins / 60)}時間前`;
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function isToday(iso) {
+  const d = new Date(iso);
+  return d.toDateString() === new Date().toDateString();
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function fetchNews(cat) {
+  const r = await fetch(`data/${encodeURIComponent(cat)}.json`, { cache: 'no-cache' });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || '取得失敗');
+  return r.json();
+}
+
+function renderBrief(data) {
+  const items = data.brief || [];
+  $('briefList').innerHTML = items.map((it) => `
+    <li><div>
+      <a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a>
+      <p>${esc(firstSentence(it.description))}</p>
+    </div></li>`).join('');
+  $('brief').hidden = items.length === 0;
+}
+
+function itemHtml(it, old) {
+  return `<li class="${old ? 'old' : ''}">
+    <button class="item" type="button" aria-expanded="false">
+      <span class="time">${timeLabel(it.pubDate)}<span class="src ${it.source === 'NHK' ? 'nhk' : 'yahoo'}">${esc(it.source)}</span></span>
+      <span class="title">${esc(it.title)}</span>
+      ${it.description ? `<span class="sum">${esc(firstSentence(it.description))}</span>` : ''}
+    </button>
+    <div class="more">
+      ${it.description ? `<p>${esc(it.description)}</p>` : ''}
+      <a href="${esc(it.link)}" target="_blank" rel="noopener">記事を読む →</a>
+    </div>
+  </li>`;
+}
+
+function renderList(data) {
+  let items = data.items;
+  // 主要タブでは「まずはこの3本」と重複する記事を省く
+  if (data.brief) {
+    const shown = new Set(data.brief.map((b) => b.link));
+    items = items.filter((i) => !shown.has(i.link));
+  }
+  if (!items.length) { $('content').innerHTML = '<div class="msg">ニュースがありません</div>'; return; }
+  const today = items.filter((i) => isToday(i.pubDate));
+  const older = items.filter((i) => !isToday(i.pubDate));
+  let html = '';
+  if (today.length) html += `<div class="group">今日 · ${today.length}件</div><ul class="list">${today.map((i) => itemHtml(i, false)).join('')}</ul>`;
+  if (older.length) html += `<div class="group">それ以前</div><ul class="list">${older.map((i) => itemHtml(i, true)).join('')}</ul>`;
+  $('content').innerHTML = html;
+  const t = new Date(data.fetchedAt);
+  $('footer').textContent = `出典: NHK ニュース / Yahoo!ニュース ·${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} 取得${data.stale ? '（前回の内容）' : ''}`;
+}
+
+$('content').addEventListener('click', (e) => {
+  const btn = e.target.closest('.item');
+  if (!btn) return;
+  const li = btn.parentElement;
+  li.classList.toggle('open');
+  btn.setAttribute('aria-expanded', li.classList.contains('open'));
+});
+
+async function loadCategory(cat) {
+  current = cat;
+  try { localStorage.setItem('cat', cat); } catch {}
+  document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', b.dataset.cat === cat));
+  $('content').innerHTML = '<div class="skeleton"></div>'.repeat(5);
+  try {
+    renderList(await fetchNews(cat));
+  } catch (e) {
+    $('content').innerHTML = `<div class="msg">${esc(e.message)}。少し待ってから「更新」を押してください。</div>`;
+  }
+}
+
+async function loadAll() {
+  $('refresh').classList.add('spin');
+  try {
+    fetchNews('top').then(renderBrief).catch(() => { $('brief').hidden = true; });
+    await loadCategory(current);
+  } finally {
+    $('refresh').classList.remove('spin');
+  }
+}
+
+async function init() {
+  const cats = await fetch('data/categories.json', { cache: 'no-cache' }).then((r) => r.json());
+  if (!cats.some((c) => c.key === current)) current = 'top';
+  $('tabs').innerHTML = cats.map((c) => `<button role="tab" data-cat="${c.key}" aria-selected="false">${esc(c.label)}</button>`).join('');
+  $('tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (b) loadCategory(b.dataset.cat);
+  });
+  $('refresh').addEventListener('click', loadAll);
+  loadAll();
+}
+init();
+</script>
+</body>
+</html>
