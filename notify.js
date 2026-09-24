@@ -1,12 +1,12 @@
 // 主要ニュース3本をWindowsの通知で出す。タスクスケジューラから毎朝実行する想定。
-// 通知をクリックするとアプリ (サーバーが動いていれば) か NHK ニュースを開く。
+// 通知をクリックすると GitHub Pages で公開中のアプリを開く。
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { fetchCategory, pickBrief } = require('./lib/news');
 
-const APP_URL = process.env.NEWS_APP_URL || 'http://localhost:3000';
+const APP_URL = process.env.NEWS_APP_URL || 'https://yutianqiao7-dev.github.io/todays-news';
 
 function xmlEsc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
@@ -29,7 +29,7 @@ async function main() {
   const d = new Date();
   const heading = `今日のニュース ${d.getMonth() + 1}/${d.getDate()}`;
   const body = brief.map((b) => `・${b.title}`).join('\n');
-  const launch = (await appIsRunning()) ? APP_URL : 'https://news.web.nhk/newsweb/';
+  const launch = (await appIsRunning()) ? `${APP_URL}/` : 'https://news.web.nhk/newsweb/';
 
   const toastXml = `<toast activationType="protocol" launch="${xmlEsc(launch)}" scenario="default">
   <visual><binding template="ToastGeneric">
