@@ -51,12 +51,25 @@
   header .date { font-size: 13px; color: var(--muted); letter-spacing: .04em; }
   header h1 { margin: 2px 0 0; font-size: 26px; line-height: 1.2; letter-spacing: .02em; }
   header .grow { flex: 1; }
-  #refresh {
-    border: 1px solid var(--line); background: var(--surface); color: var(--text);
-    border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 13px; cursor: pointer;
-    display: inline-flex; align-items: center; gap: 6px;
+  .pill {
+    flex: none; border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   }
-  #refresh svg { width: 14px; height: 14px; }
+  .pill svg { width: 14px; height: 14px; }
+  .pill.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  #rate { font-variant-numeric: tabular-nums; padding: 8px 10px; }
+  /* スマホ幅では更新ボタンをアイコンだけにする */
+  /* スマホ幅ではボタンを見出しの下の段に並べる */
+  @media (max-width: 420px) {
+    header { flex-wrap: wrap; row-gap: 12px; gap: 8px; }
+    header .grow { flex-basis: 100%; }
+    #speak { flex: 1; justify-content: center; padding: 10px 12px; font-size: 15px; }
+    #speak svg { width: 16px; height: 16px; }
+  }
+
+  /* 読み上げ中の記事 */
+  .speaking { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 8px; box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 12%, transparent); }
   #refresh.spin svg { animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -113,7 +126,12 @@
       <div class="date" id="date"></div>
       <h1>今日のニュース</h1>
     </div>
-    <button id="refresh" type="button" aria-label="更新">
+    <button id="speak" class="pill primary" type="button" hidden>
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>読み上げ</span>
+    </button>
+    <button id="rate" class="pill" type="button" hidden aria-label="読み上げの速さ">1.0x</button>
+    <button id="refresh" class="pill" type="button" aria-label="更新">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
       更新
     </button>
@@ -170,10 +188,14 @@ async function fetchNews(cat) {
   return r.json();
 }
 
+let lastBrief = [];
+let lastList = { label: '', items: [] };
+
 function renderBrief(data) {
   const items = data.brief || [];
+  lastBrief = items;
   $('briefList').innerHTML = items.map((it) => `
-    <li><div>
+    <li data-link="${esc(it.link)}"><div>
       <a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a>
       <p>${esc(firstSentence(it.description))}</p>
     </div></li>`).join('');
@@ -181,7 +203,7 @@ function renderBrief(data) {
 }
 
 function itemHtml(it, old) {
-  return `<li class="${old ? 'old' : ''}">
+  return `<li class="${old ? 'old' : ''}" data-link="${esc(it.link)}">
     <button class="item" type="button" aria-expanded="false">
       <span class="time">${timeLabel(it.pubDate)}<span class="src ${it.source === 'NHK' ? 'nhk' : 'yahoo'}">${esc(it.source)}</span></span>
       <span class="title">${esc(it.title)}</span>
@@ -204,12 +226,13 @@ function renderList(data) {
   if (!items.length) { $('content').innerHTML = '<div class="msg">ニュースがありません</div>'; return; }
   const today = items.filter((i) => isToday(i.pubDate));
   const older = items.filter((i) => !isToday(i.pubDate));
+  lastList = { label: data.label, items: today.length ? today : older };
   let html = '';
   if (today.length) html += `<div class="group">今日 · ${today.length}件</div><ul class="list">${today.map((i) => itemHtml(i, false)).join('')}</ul>`;
   if (older.length) html += `<div class="group">それ以前</div><ul class="list">${older.map((i) => itemHtml(i, true)).join('')}</ul>`;
   $('content').innerHTML = html;
   const t = new Date(data.fetchedAt);
-  $('footer').textContent = `出典: NHK ニュース / Yahoo!ニュース ·${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} 取得${data.stale ? '（前回の内容）' : ''}`;
+  $('footer').textContent = `出典: NHK ニュース / Yahoo!ニュース · ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} 取得${data.stale ? '（前回の内容）' : ''}`;
 }
 
 $('content').addEventListener('click', (e) => {
@@ -220,7 +243,107 @@ $('content').addEventListener('click', (e) => {
   btn.setAttribute('aria-expanded', li.classList.contains('open'));
 });
 
+// ---- 読み上げ (ブラウザ内蔵の Web Speech API) ----
+const synth = window.speechSynthesis;
+const RATES = [1, 1.25, 1.5];
+const MAX_LIST_ITEMS = 10; // 一覧から読むのは新しい順に最大10本
+let rate = 1;
+try { rate = Number(localStorage.getItem('rate')) || 1; } catch {}
+const rateLabel = (r) => `${r === 1 ? '1.0' : r}x`;
+let isSpeaking = false;
+let speakRun = 0; // 停止したら古い読み上げの続きを無視するための番号
+
+function pickVoice() {
+  const ja = synth.getVoices().filter((v) => /^ja/i.test(v.lang));
+  // 自然に聞こえやすい声を優先 (Edge の Natural, Chrome の Google, iOS の Kyoko/O-ren)
+  return ja.find((v) => /Natural|Online/i.test(v.name))
+    || ja.find((v) => /Google|Kyoko|O-ren|Otoya/i.test(v.name))
+    || ja[0] || null;
+}
+
+// 見出しの区切りスペースを読点にすると、間が自然になる
+const forSpeech = (s) => s.replace(/[\s　]+/g, '、').replace(/[【】「」]/g, ' ').replace(/[×✕]/g, '対');
+
+function buildScript() {
+  const d = new Date();
+  const parts = [{ text: `${d.getMonth() + 1}月${d.getDate()}日、${WEEK[d.getDay()]}曜日のニュースです。` }];
+  lastBrief.forEach((it, i) => {
+    parts.push({ link: it.link, text: `${i + 1}本目。${forSpeech(it.title)}。${firstSentence(it.description)}` });
+  });
+  const list = lastList.items.slice(0, MAX_LIST_ITEMS);
+  if (list.length) {
+    parts.push({ text: current === 'top' ? '続いて、そのほかのニュースです。' : `続いて、${lastList.label}のニュースです。` });
+    list.forEach((it) => {
+      parts.push({ link: it.link, text: `${forSpeech(it.title)}。${it.description ? firstSentence(it.description) : ''}` });
+    });
+  }
+  parts.push({ text: '以上です。' });
+  return parts;
+}
+
+function highlight(link) {
+  document.querySelectorAll('.speaking').forEach((el) => el.classList.remove('speaking'));
+  if (!link) return;
+  const el = [...document.querySelectorAll('li[data-link]')].find((li) => li.dataset.link === link);
+  if (el) {
+    el.classList.add('speaking');
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+}
+
+function setSpeaking(on) {
+  isSpeaking = on;
+  $('speak').querySelector('span').textContent = on ? '停止' : '読み上げ';
+  $('speak').setAttribute('aria-pressed', on);
+  if (!on) highlight(null);
+}
+
+function stopSpeaking() {
+  speakRun++;
+  synth.cancel();
+  setSpeaking(false);
+}
+
+// 1文ずつ順番に話す (長い文をまとめて渡すと途中で止まるブラウザがあるため)
+function startSpeaking() {
+  synth.cancel();
+  const run = ++speakRun;
+  const parts = buildScript();
+  const voice = pickVoice();
+  let i = 0;
+  const next = () => {
+    if (run !== speakRun) return;
+    if (i >= parts.length) { setSpeaking(false); return; }
+    const p = parts[i++];
+    const u = new SpeechSynthesisUtterance(p.text);
+    u.lang = 'ja-JP';
+    if (voice) u.voice = voice;
+    u.rate = rate;
+    u.onstart = () => { if (run === speakRun) highlight(p.link); };
+    u.onend = next;
+    u.onerror = next;
+    synth.speak(u);
+  };
+  setSpeaking(true);
+  next();
+}
+
+function initSpeech() {
+  if (!synth || !window.SpeechSynthesisUtterance) return; // 非対応ブラウザではボタンを出さない
+  $('speak').hidden = false;
+  $('rate').hidden = false;
+  $('rate').textContent = rateLabel(rate);
+  synth.getVoices(); // Chrome は声の一覧を非同期で読み込むので先に起こしておく
+  $('speak').addEventListener('click', () => (isSpeaking ? stopSpeaking() : startSpeaking()));
+  $('rate').addEventListener('click', () => {
+    rate = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
+    try { localStorage.setItem('rate', rate); } catch {}
+    $('rate').textContent = rateLabel(rate);
+  });
+}
+
 async function loadCategory(cat) {
+  if (isSpeaking) stopSpeaking(); // タブを切り替えたら読み上げを止める
   current = cat;
   try { localStorage.setItem('cat', cat); } catch {}
   document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', b.dataset.cat === cat));
@@ -251,6 +374,7 @@ async function init() {
     if (b) loadCategory(b.dataset.cat);
   });
   $('refresh').addEventListener('click', loadAll);
+  initSpeech();
   loadAll();
 }
 init();
