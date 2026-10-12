@@ -49,7 +49,7 @@ const server = http.createServer(async (req, res) => {
     if (!CATEGORIES[a[1]]) return sendJson(res, 404, { error: 'unknown category' });
     try {
       const [top, data] = await Promise.all([getCategory('top'), getCategory(a[1])]);
-      return sendJson(res, 200, { audio: null, credit: null, parts: buildScript(top.brief, data) });
+      return sendJson(res, 200, { parts: buildScript(top.brief, data), voices: [] });
     } catch {
       return sendJson(res, 502, { error: 'ニュースを取得できませんでした' });
     }

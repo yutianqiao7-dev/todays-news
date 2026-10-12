@@ -42,22 +42,22 @@ async function main() {
   }
 
   // 音声づくり。失敗してもサイトは公開し、画面側は端末の声で読む
-  const speaker = process.env.SKIP_VOICE ? null : await connect();
-  const voice = speaker && createVoice(speaker);
-  console.log(voice ? `音声: ${voice.credit}` : '音声: VOICEVOX なし (端末の声で読む)');
+  const voices = (process.env.SKIP_VOICE ? [] : await connect()).map(createVoice);
+  console.log(voices.length ? `音声: ${voices.map((v) => v.credit).join(', ')}` : '音声: VOICEVOX なし (端末の声で読む)');
   const version = Date.now().toString(36);
   for (const key of Object.keys(CATEGORIES)) {
     const parts = buildScript(all.top.brief, all[key]);
-    const out = { audio: null, credit: null, parts };
-    if (voice) {
+    // voices: 声ごとの音声ファイルと、各 part の開始秒
+    const out = { parts, voices: [] };
+    for (const voice of voices) {
       try {
         const t = Date.now();
-        const starts = await voice.render(parts.map((p) => p.text), path.join(audioDir, `${key}.mp3`));
-        parts.forEach((p, i) => { p.start = starts[i]; });
-        Object.assign(out, { audio: `audio/${key}.mp3?v=${version}`, credit: voice.credit });
-        console.log(`  ${all[key].label} 音声 ${((Date.now() - t) / 1000).toFixed(1)}秒`);
+        const file = `${key}-${voice.key}.mp3`;
+        const starts = await voice.render(parts.map((p) => p.text), path.join(audioDir, file));
+        out.voices.push({ key: voice.key, name: voice.name, credit: voice.credit, audio: `audio/${file}?v=${version}`, starts });
+        console.log(`  ${all[key].label} ${voice.name} ${((Date.now() - t) / 1000).toFixed(1)}秒`);
       } catch (e) {
-        console.error(`  ${all[key].label} 音声失敗: ${e.message}`);
+        console.error(`  ${all[key].label} ${voice.name} 音声失敗: ${e.message}`);
       }
     }
     fs.writeFileSync(path.join(audioDir, `${key}.json`), JSON.stringify(out));

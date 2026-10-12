@@ -6,8 +6,11 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const BASE = process.env.VOICEVOX_URL || 'http://127.0.0.1:50021';
-// ニュース向けのアナウンス調の声を優先。無ければ順に代わりを使う
-const PREFERRED = [['No.7', 'アナウンス'], ['青山龍星', 'ノーマル'], ['冥鳴ひまり', 'ノーマル']];
+// 画面で切り替えられる声。エンジンに無い声は飛ばす
+const VOICES = [
+  { key: 'no7', name: 'No.7', style: 'アナウンス' },
+  { key: 'ryusei', name: '青山龍星', style: 'ノーマル' },
+];
 const GAP_SEC = 0.5; // 記事と記事の間の無音
 const SPEED = 1.1; // 少しだけ速めのほうがニュースらしい
 
@@ -17,24 +20,22 @@ async function api(pathname, init) {
   return r;
 }
 
-// エンジンの起動を待つ。使えなければ null
+// エンジンの起動を待ち、使える声の一覧を返す。エンジンが無ければ []
 async function connect(waitSec = 90) {
   for (let i = 0; i < waitSec; i += 3) {
     try {
       await api('/version');
       const speakers = await (await api('/speakers')).json();
-      for (const [name, style] of PREFERRED) {
-        const sp = speakers.find((s) => s.name === name);
-        const st = sp && (sp.styles.find((x) => x.name === style) || sp.styles[0]);
-        if (st) return { id: st.id, credit: `VOICEVOX:${name}` };
-      }
-      const s = speakers[0];
-      return { id: s.styles[0].id, credit: `VOICEVOX:${s.name}` };
+      return VOICES.flatMap((v) => {
+        const sp = speakers.find((s) => s.name === v.name);
+        const st = sp && (sp.styles.find((x) => x.name === v.style) || sp.styles[0]);
+        return st ? [{ key: v.key, name: v.name, id: st.id, credit: `VOICEVOX:${v.name}` }] : [];
+      });
     } catch {
       await new Promise((r) => setTimeout(r, 3000));
     }
   }
-  return null;
+  return [];
 }
 
 // WAV から PCM 部分とフォーマットを取り出す
@@ -98,7 +99,7 @@ function createVoice(speaker) {
     return starts;
   }
 
-  return { credit: speaker.credit, render };
+  return { key: speaker.key, name: speaker.name, credit: speaker.credit, render };
 }
 
 module.exports = { connect, createVoice };

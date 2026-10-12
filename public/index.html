@@ -130,6 +130,7 @@
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <span>読み上げ</span>
     </button>
+    <button id="voice" class="pill" type="button" hidden aria-label="声を切り替え"></button>
     <button id="rate" class="pill" type="button" hidden aria-label="読み上げの速さ">1.0x</button>
     <button id="refresh" class="pill" type="button" aria-label="更新">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
@@ -250,7 +251,9 @@ try { rate = Number(localStorage.getItem('rate')) || 1; } catch {}
 const rateLabel = (r) => `${r === 1 ? '1.0' : r}x`;
 let isSpeaking = false;
 let speakRun = 0; // 停止したら古い読み上げの続きを無視するための番号
-let script = null; // 表示中タブの読み上げ原稿 { audio, credit, parts: [{ text, link, start }] }
+let voiceKey = null;
+try { voiceKey = localStorage.getItem('voice'); } catch {}
+let script = null; // 表示中タブの読み上げ原稿 { parts: [{ text, link }], voices: [{ key, name, credit, audio, starts }] }
 let scriptLoading = null;
 
 // タブを開いた時点で原稿を読み込んでおく (iPhone はボタンを押した直後でないと再生できないため)
@@ -262,10 +265,25 @@ function prefetchScript(cat) {
     .then((s) => {
       if (cat !== current) return script;
       script = s;
-      $('credit').textContent = s && s.credit ? ` · 音声: ${s.credit}` : '';
-      if (s && s.audio) player.src = s.audio;
+      const voices = (s && s.voices) || [];
+      $('credit').textContent = voices.length ? ` · 音声: ${voices.map((v) => v.credit).join(' / ')}` : '';
+      updateVoiceButton();
+      const v = selectedVoice(s);
+      if (v && !isSpeaking) player.src = v.audio;
       return s;
     });
+}
+
+function selectedVoice(s) {
+  const voices = (s && s.voices) || [];
+  return voices.find((v) => v.key === voiceKey) || voices[0] || null;
+}
+
+function updateVoiceButton() {
+  const voices = (script && script.voices) || [];
+  $('voice').hidden = voices.length < 2;
+  const v = selectedVoice(script);
+  if (v) $('voice').textContent = v.name;
 }
 
 function pickVoice() {
@@ -302,13 +320,15 @@ function stopSpeaking() {
 
 // 音声ファイルを再生し、再生位置に合わせて読んでいる記事をハイライトする
 let playingIndex = -1;
-function playAudio(s, run) {
+let playingStarts = [];
+function playAudio(s, v, run, from = 0) {
   playingIndex = -1;
-  if (!player.src.endsWith(s.audio)) player.src = s.audio;
-  player.currentTime = 0;
+  playingStarts = v.starts;
+  if (!player.src.endsWith(v.audio)) player.src = v.audio;
+  player.currentTime = from;
   player.playbackRate = rate;
   player.preservesPitch = true;
-  if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: '今日のニュース', artist: s.credit || '' });
+  if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: '今日のニュース', artist: v.credit });
   player.play().catch(() => { if (run === speakRun) speakWithDevice(s.parts, run); });
 }
 
@@ -316,7 +336,7 @@ player.addEventListener('timeupdate', () => {
   if (!isSpeaking || !script) return;
   const t = player.currentTime + 0.05;
   let i = 0;
-  while (i + 1 < script.parts.length && script.parts[i + 1].start <= t) i++;
+  while (i + 1 < playingStarts.length && playingStarts[i + 1] <= t) i++;
   if (i !== playingIndex) {
     playingIndex = i;
     highlight(script.parts[i].link);
@@ -352,7 +372,8 @@ async function startSpeaking() {
   const s = script || await scriptLoading;
   if (run !== speakRun) return;
   if (!s || !s.parts) { setSpeaking(false); return; }
-  if (s.audio) playAudio(s, run);
+  const v = selectedVoice(s);
+  if (v) playAudio(s, v, run);
   else speakWithDevice(s.parts, run);
 }
 
@@ -367,6 +388,22 @@ function initSpeech() {
     try { localStorage.setItem('rate', rate); } catch {}
     $('rate').textContent = rateLabel(rate);
     player.playbackRate = rate;
+  });
+  // 声を切り替える。読み上げ中なら、いま読んでいる記事の頭から新しい声で続ける
+  $('voice').addEventListener('click', () => {
+    const voices = (script && script.voices) || [];
+    if (voices.length < 2) return;
+    const cur = selectedVoice(script);
+    const next = voices[(voices.indexOf(cur) + 1) % voices.length];
+    voiceKey = next.key;
+    try { localStorage.setItem('voice', voiceKey); } catch {}
+    updateVoiceButton();
+    if (isSpeaking && !player.paused) {
+      const idx = Math.max(0, playingIndex);
+      playAudio(script, next, speakRun, next.starts[idx] || 0);
+    } else {
+      player.src = next.audio;
+    }
   });
 }
 
