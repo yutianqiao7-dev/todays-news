@@ -19,14 +19,25 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      TZ: Asia/Tokyo # 「今日」や読み上げの日付を日本時間で決める
+    services:
+      # 読み上げ音声を作る VOICEVOX エンジン
+      voicevox:
+        image: voicevox/voicevox_engine:cpu-latest
+        ports:
+          - 50021:50021
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Install ffmpeg
+        run: which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg)
       - run: node scripts/build.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

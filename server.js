@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { CATEGORIES, fetchCategory, pickBrief } = require('./lib/news');
+const { buildScript } = require('./lib/speech');
 
 const PORT = Number(process.env.PORT) || 3000;
 const CACHE_MS = 10 * 60 * 1000; // 10分キャッシュ
@@ -40,6 +41,18 @@ const server = http.createServer(async (req, res) => {
   // GitHub Pages 版 (scripts/build.js) と同じ data/*.json の形で返す
   if (url.pathname === '/data/categories.json') {
     return sendJson(res, 200, Object.entries(CATEGORIES).map(([key, c]) => ({ key, label: c.label })));
+  }
+
+  // 読み上げ原稿。ローカルでは音声ファイルを作らないので、画面側が端末の声で読む
+  const a = url.pathname.match(/^\/audio\/([a-z]+)\.json$/);
+  if (a) {
+    if (!CATEGORIES[a[1]]) return sendJson(res, 404, { error: 'unknown category' });
+    try {
+      const [top, data] = await Promise.all([getCategory('top'), getCategory(a[1])]);
+      return sendJson(res, 200, { audio: null, credit: null, parts: buildScript(top.brief, data) });
+    } catch {
+      return sendJson(res, 502, { error: 'ニュースを取得できませんでした' });
+    }
   }
 
   const m = url.pathname.match(/^\/data\/([a-z]+)\.json$/);
