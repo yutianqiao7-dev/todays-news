@@ -3,7 +3,7 @@
 // 読み上げ原稿と音声 (VOICEVOX が使えれば MP3) を dist/audio/ に書き出す。
 const fs = require('fs');
 const path = require('path');
-const { CATEGORIES, fetchCategory, pickBrief } = require('../lib/news');
+const { CATEGORIES, fetchCategory, pickBrief, saveSummaries } = require('../lib/news');
 const { buildScript } = require('../lib/speech');
 const { connect, createVoice, pruneCache } = require('./voice');
 
@@ -40,6 +40,7 @@ async function main() {
     fs.writeFileSync(path.join(dataDir, `${key}.json`), JSON.stringify(data));
     console.log(`${data.label}: ${data.items.length}件`);
   }
+  saveSummaries();
 
   // 音声づくり。失敗してもサイトは公開し、画面側は端末の声で読む
   const voices = (process.env.SKIP_VOICE ? [] : await connect()).map(createVoice);

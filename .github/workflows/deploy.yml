@@ -39,18 +39,23 @@ jobs:
           node-version: 24
       - name: Install ffmpeg
         run: which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg)
-      # 前回作った文ごとの音声を引き継ぐ (同じ記事は作り直さない)
+      # 前回作った文ごとの音声と Yahoo! の要約を引き継ぐ (同じ記事は作り直さない)
       - uses: actions/cache/restore@v4
         with:
-          path: .voice-cache
+          path: |
+            .voice-cache
+            .summary-cache.json
           key: voice-${{ github.run_id }}
           restore-keys: voice-
       - run: node scripts/build.js
         env:
           VOICE_CACHE_DIR: .voice-cache
+          SUMMARY_CACHE_FILE: .summary-cache.json
       - uses: actions/cache/save@v4
         with:
-          path: .voice-cache
+          path: |
+            .voice-cache
+            .summary-cache.json
           key: voice-${{ github.run_id }}
       - name: Delete old voice caches
         env:
