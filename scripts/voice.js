@@ -20,17 +20,24 @@ const SPEED = 1.1; // 少しだけ速めのほうがニュースらしい
 const CACHE_DIR = process.env.VOICE_CACHE_DIR || null;
 const usedCacheFiles = new Set();
 
-async function api(pathname, init) {
-  const r = await fetch(BASE + pathname, { ...init, signal: AbortSignal.timeout(120000) });
-  if (!r.ok) throw new Error(`VOICEVOX ${pathname} ${r.status}`);
-  return r;
+// エンジンが一時的に応答しないことがあるので、少し待って2回までやり直す
+async function api(pathname, init, retries = 2) {
+  try {
+    const r = await fetch(BASE + pathname, { ...init, signal: AbortSignal.timeout(120000) });
+    if (!r.ok) throw new Error(`VOICEVOX ${pathname.split('?')[0]} ${r.status}`);
+    return r;
+  } catch (e) {
+    if (retries <= 0) throw e;
+    await new Promise((res) => setTimeout(res, 3000));
+    return api(pathname, init, retries - 1);
+  }
 }
 
 // エンジンの起動を待ち、使える声の一覧を返す。エンジンが無ければ []
 async function connect(waitSec = 90) {
   for (let i = 0; i < waitSec; i += 3) {
     try {
-      await api('/version');
+      await api('/version', undefined, 0); // 起動待ちはこのループで繰り返す
       const speakers = await (await api('/speakers')).json();
       return VOICES.flatMap((v) => {
         const sp = speakers.find((s) => s.name === v.name);
