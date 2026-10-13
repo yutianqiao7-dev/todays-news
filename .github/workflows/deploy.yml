@@ -11,10 +11,11 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write # 古い音声キャッシュの削除に使う
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false # 途中の公開を取り消さず、終わるのを待ってから次を動かす
 
 jobs:
   deploy:
@@ -38,7 +39,26 @@ jobs:
           node-version: 24
       - name: Install ffmpeg
         run: which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg)
+      # 前回作った文ごとの音声を引き継ぐ (同じ記事は作り直さない)
+      - uses: actions/cache/restore@v4
+        with:
+          path: .voice-cache
+          key: voice-${{ github.run_id }}
+          restore-keys: voice-
       - run: node scripts/build.js
+        env:
+          VOICE_CACHE_DIR: .voice-cache
+      - uses: actions/cache/save@v4
+        with:
+          path: .voice-cache
+          key: voice-${{ github.run_id }}
+      - name: Delete old voice caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list -R "${{ github.repository }}" --key voice- --limit 100 --json id,key \
+            --jq ".[] | select(.key != \"voice-${{ github.run_id }}\") | .id" \
+            | xargs -r -n1 gh cache delete -R "${{ github.repository }}" || true
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { CATEGORIES, fetchCategory, pickBrief } = require('../lib/news');
 const { buildScript } = require('../lib/speech');
-const { connect, createVoice } = require('./voice');
+const { connect, createVoice, pruneCache } = require('./voice');
 
 const root = path.join(__dirname, '..');
 const dist = path.join(root, 'dist');
@@ -61,6 +61,10 @@ async function main() {
       }
     }
     fs.writeFileSync(path.join(audioDir, `${key}.json`), JSON.stringify(out));
+  }
+  if (voices.length) {
+    const c = pruneCache();
+    console.log(`音声キャッシュ: ${c.kept}件 (古い${c.removed}件を削除)`);
   }
 }
 

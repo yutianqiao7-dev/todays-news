@@ -1,5 +1,6 @@
 // VOICEVOX エンジン (GitHub Actions ではサービスコンテナ) で読み上げ原稿を MP3 にする。
 // 各 part の WAV をつなげ、part ごとの開始秒を返す (再生中のハイライト用)。
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -14,6 +15,10 @@ const VOICES = [
 ];
 const GAP_SEC = 0.5; // 記事と記事の間の無音
 const SPEED = 1.1; // 少しだけ速めのほうがニュースらしい
+// 前回の実行で作った文の音声を置いておく場所 (GitHub Actions のキャッシュで引き継ぐ)。
+// 30分前と同じ記事は作り直さないので、更新が速くなる。
+const CACHE_DIR = process.env.VOICE_CACHE_DIR || null;
+const usedCacheFiles = new Set();
 
 async function api(pathname, init) {
   const r = await fetch(BASE + pathname, { ...init, signal: AbortSignal.timeout(120000) });
@@ -68,6 +73,15 @@ function createVoice(speaker) {
 
   async function synth(text) {
     if (cache.has(text)) return cache.get(text);
+    const file = CACHE_DIR && path.join(CACHE_DIR, `${crypto.createHash('sha1').update(`${speaker.id}|${SPEED}|${text}`).digest('hex')}.wav`);
+    if (file) {
+      usedCacheFiles.add(path.basename(file));
+      if (fs.existsSync(file)) {
+        const parsed = parseWav(fs.readFileSync(file));
+        cache.set(text, parsed);
+        return parsed;
+      }
+    }
     const q = await (await api(`/audio_query?speaker=${speaker.id}&text=${encodeURIComponent(text)}`, { method: 'POST' })).json();
     q.speedScale = SPEED;
     const wav = Buffer.from(await (await api(`/synthesis?speaker=${speaker.id}`, {
@@ -75,6 +89,10 @@ function createVoice(speaker) {
     })).arrayBuffer());
     const parsed = parseWav(wav);
     cache.set(text, parsed);
+    if (file) {
+      fs.mkdirSync(CACHE_DIR, { recursive: true });
+      fs.writeFileSync(file, wav);
+    }
     return parsed;
   }
 
@@ -103,4 +121,14 @@ function createVoice(speaker) {
   return { key: speaker.key, name: speaker.name, credit: speaker.credit, render };
 }
 
-module.exports = { connect, createVoice };
+// 今回使わなかった古い音声を消して、キャッシュが膨らまないようにする
+function pruneCache() {
+  if (!CACHE_DIR || !fs.existsSync(CACHE_DIR)) return { kept: 0, removed: 0 };
+  let removed = 0;
+  for (const name of fs.readdirSync(CACHE_DIR)) {
+    if (!usedCacheFiles.has(name)) { fs.rmSync(path.join(CACHE_DIR, name)); removed++; }
+  }
+  return { kept: usedCacheFiles.size, removed };
+}
+
+module.exports = { connect, createVoice, pruneCache };
