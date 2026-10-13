@@ -10,6 +10,7 @@ const BASE = process.env.VOICEVOX_URL || 'http://127.0.0.1:50021';
 const VOICES = [
   { key: 'no7', name: 'No.7', style: 'アナウンス' },
   { key: 'ryusei', name: '青山龍星', style: 'ノーマル' },
+  { key: 'zundamon', name: 'ずんだもん', style: 'ノーマル' },
 ];
 const GAP_SEC = 0.5; // 記事と記事の間の無音
 const SPEED = 1.1; // 少しだけ速めのほうがニュースらしい
