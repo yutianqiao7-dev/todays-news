@@ -19,6 +19,10 @@ const SPEED = 1.1; // 少しだけ速めのほうがニュースらしい
 // 30分前と同じ記事は作り直さないので、更新が速くなる。
 const CACHE_DIR = process.env.VOICE_CACHE_DIR || null;
 const usedCacheFiles = new Set();
+// 1回の実行で新しく音声を作る時間の上限 (秒)。超えた分は次の実行で作る
+const BUDGET_SEC = Number(process.env.VOICE_BUDGET_SEC) || 13 * 60;
+const deadline = Date.now() + BUDGET_SEC * 1000;
+let timedOut = false;
 
 // エンジンが一時的に応答しないことがあるので、少し待って2回までやり直す
 async function api(pathname, init, retries = 2) {
@@ -89,6 +93,10 @@ function createVoice(speaker) {
         return parsed;
       }
     }
+    if (Date.now() > deadline) {
+      timedOut = true;
+      throw new Error('時間切れ (次の実行で作ります)');
+    }
     const q = await (await api(`/audio_query?speaker=${speaker.id}&text=${encodeURIComponent(text)}`, { method: 'POST' })).json();
     q.speedScale = SPEED;
     const wav = Buffer.from(await (await api(`/synthesis?speaker=${speaker.id}`, {
@@ -129,8 +137,9 @@ function createVoice(speaker) {
 }
 
 // 今回使わなかった古い音声を消して、キャッシュが膨らまないようにする
+// 時間切れの回は、まだ見ていないカテゴリの音声を消さないよう何もしない
 function pruneCache() {
-  if (!CACHE_DIR || !fs.existsSync(CACHE_DIR)) return { kept: 0, removed: 0 };
+  if (!CACHE_DIR || !fs.existsSync(CACHE_DIR) || timedOut) return { kept: usedCacheFiles.size, removed: 0 };
   let removed = 0;
   for (const name of fs.readdirSync(CACHE_DIR)) {
     if (!usedCacheFiles.has(name)) { fs.rmSync(path.join(CACHE_DIR, name)); removed++; }
